@@ -1,0 +1,12 @@
+def make_ext(modname, pyxfilename):
+   from distutils.extension import Extension
+   import string
+   pyxdirs = pyxfilename.split("/")
+   pyxdir = string.join(pyxdirs[:-1],"/")
+   return Extension(name=modname,
+                    sources=[pyxfilename],
+                    libraries = ["stdc++", "emon"],
+                    include_dirs = [pyxdir],
+                    language='C++',
+                    extra_compile_args=['-O3'])
+
