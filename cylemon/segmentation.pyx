@@ -717,11 +717,19 @@ cdef class MSTSegmentor(Segmentor):
 
 
 cdef extern from "segmentation.hxx":
-  cdef void prioMST(Graph &, NodeMap[int] &segmentation, ArcMap[float] &weights, vector[float] &prio)
+  cdef void prioMST(Graph &, NodeMap[int] &segmentation, ArcMap[float] &weights, ArcMap[bint] &intree, vector[float] &prio)
+  cdef void edgeExchangeCount(Graph &, NodeMap[int] &seeds, NodeMap[int] &segmentation, ArcMap[float] &weights, ArcMap[bint] &intree, ArcMap[int] &exchangeCount, vector[float] &prio)
 
+cdef class MSTSegmentor2(Segmentor):    
+  
+  cdef object _exchangeCount
 
-
-cdef class MSTSegmentor2(Segmentor):
+  property exchangeCount:
+    def __get__(self):
+      if self._exchangeCount is None:
+        self._exchangeCount = np.ndarray((self._numNodes,),np.int32)
+      return IndexAccessor(self._labelVol,self._exchangeCount)
+ 
   def run(self, np.ndarray[dtype=np.float32_t, ndim=2] unaries, prios = None):
     """
     Run Graph Cut algorithm with the parameters
@@ -734,8 +742,6 @@ cdef class MSTSegmentor2(Segmentor):
 
     print "   snapshotting graph..."
     cdef Snapshot sns = Snapshot(deref(self.graph))
-    print "   adding seeds to graph..."
-
 
     #shorthand
     cdef Graph *g = self.graph
@@ -748,9 +754,11 @@ cdef class MSTSegmentor2(Segmentor):
     cdef vector[Node] sources
 
     cdef NodeMapI *segmentation = new NodeMapI(deref(g))
+    cdef NodeMapI *origSeeds = new NodeMapI(deref(g))
     cdef np.ndarray[dtype=np.uint8_t,ndim=1] seeds = self._seeds
     for i in range(seeds.shape[0]):
       segmentation.set(g.nodeFromId(i),seeds[i])
+      origSeeds.set(g.nodeFromId(i),seeds[i])
     
 
     cdef vector[float] prio
@@ -761,12 +769,29 @@ cdef class MSTSegmentor2(Segmentor):
 
 
     print "   running prioMST..."
-    prioMST(deref(g), deref(segmentation), deref(am), prio)
+    cdef ArcMapBool *intree = new ArcMapBool(deref(g))
+    prioMST(deref(g), deref(segmentation), deref(am), deref(intree),prio)
 
+    print "   calculating edge exchange count..."
+    cdef ArcMapI *exchangeCount = new ArcMapI(deref(g))
+    edgeExchangeCount(deref(g), deref(origSeeds), deref(segmentation), deref(am), deref(intree), deref(exchangeCount), prio)
 
+    # store the segmentatino in the result ndarray
     cdef np.ndarray[ndim=1,dtype=np.int32_t] outseg = self._segmentation
     for i in range(seeds.shape[0]):
       outseg[i] = deref(segmentation)[g.nodeFromId(i)]
-    
-    print "   restoring graph..."
+
+    # calculate the exchange count uncertainty
+    temp = self.exchangeCount # just ensure the array self._exchangeCount exists
+    cdef np.ndarray[ndim=1, dtype=np.int32_t] outExchangeCount = self._exchangeCount
+    outExchangeCount[:] = 0
+    cdef OutArcIt ait
+    for i in range(outseg.shape[0]):
+      ait = OutArcIt(deref(g), g.nodeFromId(i))
+      while ait != INVALID:
+        outExchangeCount[i] += deref(exchangeCount)[ait]
+        inc(ait)
+    outExchangeCount[:] = (outExchangeCount - outExchangeCount.min()) * 255 / (outExchangeCount.max() - outExchangeCount.min()) 
+
+    print "   restoring original graph..."
     sns.restore()
