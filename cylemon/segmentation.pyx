@@ -1,3 +1,5 @@
+import pyximport; pyximport.install(pyimport=False)
+import h5py
 cimport cython
 from cython.operator cimport dereference as deref, preincrement as inc
 import cython
@@ -18,16 +20,11 @@ from cylemon.lemon cimport kruskal
 from cylemon.lemon.smart_graph cimport Arc,ArcIt,Node,NodeIt,Snapshot,OutArcIt,InArcIt, ArcMap, NodeMap, INVALID
 from cylemon.lemon.smart_graph cimport SmartDigraph as Graph
 
-from cylemon.lemon.bucket_heap cimport BucketHeap
-
-
-import h5py
 
 ctypedef smart_graph.ArcMap[float] ArcMapF
 ctypedef smart_graph.ArcMap[bint] ArcMapBool
 ctypedef ArcMap[int] ArcMapI
 ctypedef preflow.Preflow[Graph,ArcMapF] Maxflow
-ctypedef BucketHeap[ArcMapI] ArcBucketHeap
 ctypedef NodeMap[int] NodeMapI
 
 
