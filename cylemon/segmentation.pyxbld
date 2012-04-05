@@ -5,8 +5,8 @@ def make_ext(modname, pyxfilename):
    pyxdir = string.join(pyxdirs[:-1],"/")
    return Extension(name=modname,
                     sources=[pyxfilename],
-                    libraries = ["stdc++", "emon"],
+                    libraries = ["stdc++", "emon", "gomp"],
                     include_dirs = [pyxdir],
                     language='C++',
-                    extra_compile_args=['-O3'])
+                    extra_compile_args=['-O1', '-fopenmp'])
 

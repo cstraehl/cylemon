@@ -1,5 +1,5 @@
-cimport smart_graph
-from smart_graph cimport Node, NodeIt, Arc, ArcIt, NodeMap, ArcMap, SmartDigraph
+cimport list_graph
+from list_graph cimport Node, NodeIt, Arc, ArcIt, NodeMap, ArcMap, ListDigraph
 
 cdef extern from "<lemon/preflow.h>" namespace "lemon":
   cdef cppclass Preflow[GT,CM]:

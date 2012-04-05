@@ -133,6 +133,10 @@ cdef extern from "<lemon/smart_graph.h>" namespace "lemon":
     inline Node target(ArcIt)
     inline Node target(OutArcIt)
     inline Node target(InArcIt)
+    inline Node baseNode(OutArcIt)
+    inline Node runningNode(OutArcIt)
+    inline Node baseNode(InArcIt)
+    inline Node runningNode(InArcIt)
     inline int id(Node)
     inline int id(NodeIt)
     inline int id(Arc)
@@ -162,7 +166,6 @@ cdef extern from "<lemon/smart_graph.h>" namespace "lemon::SmartDigraph":
     cdef cppclass ArcMap[T]:
       ArcMap(SmartDigraph&)
       ArcMap(SmartDigraph&, T)
-      ArcMap(ArcMap[T])
       inline T& operator[](Arc)
       inline T& operator[](ArcIt)
       inline T& operator[](OutArcIt)

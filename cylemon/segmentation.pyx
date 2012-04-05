@@ -1,3 +1,5 @@
+
+
 import pyximport; pyximport.install(pyimport=False)
 import h5py
 cimport cython
@@ -14,19 +16,31 @@ from libcpp.vector cimport vector
 from cython.operator cimport dereference as deref, preincrement as inc
 
 
-from cylemon.lemon cimport smart_graph
 from cylemon.lemon cimport preflow
 from cylemon.lemon cimport kruskal
-from cylemon.lemon.smart_graph cimport Arc,ArcIt,Node,NodeIt,Snapshot,OutArcIt,InArcIt, ArcMap, NodeMap, INVALID
-from cylemon.lemon.smart_graph cimport SmartDigraph as Graph
+from cylemon.lemon.list_graph cimport Arc,ArcIt,Node,NodeIt,OutArcIt,InArcIt, ArcMap, NodeMap, INVALID
+from cylemon.lemon.list_graph cimport ListDigraph as Graph
 
 
-ctypedef smart_graph.ArcMap[float] ArcMapF
-ctypedef smart_graph.ArcMap[bint] ArcMapBool
+ctypedef ArcMap[float] ArcMapF
+ctypedef ArcMap[bint] ArcMapBool
 ctypedef ArcMap[int] ArcMapI
 ctypedef preflow.Preflow[Graph,ArcMapF] Maxflow
 ctypedef NodeMap[int] NodeMapI
+ctypedef NodeMap[long] NodeMapL
 
+cdef extern from "math.h":
+    double sqrt(double x)
+    double exp(double x)
+
+
+cdef extern from "segmentation.hxx":
+  cdef void prioMST(Graph &, NodeMap[int] &seeds, NodeMap[int] &segmentation, ArcMap[float] &weights, ArcMap[bint] &intree, vector[float] &prio)
+  cdef void prioMSTmargin(Graph &, NodeMap[int] &, ArcMap[float] &, NodeMap[float] &, vector[float] &)
+  cdef void prioMSTmav(Graph &, NodeMap[int] &seeds, NodeMap[int] &segmentation, ArcMap[float] &weights, ArcMap[bint] &intree, vector[float] &prio)
+  cdef void edgeExchangeCount(Graph &, NodeMap[int] &seeds, NodeMap[int] &segmentation, ArcMap[float] &weights, ArcMap[bint] &intree, ArcMap[int] &exchangeCount, vector[float] &prio)
+  cdef void prioMSTperturb(Graph &, NodeMap[int] &seeds, NodeMap[int] &segmentation, ArcMap[float] &weights, NodeMap[long] &cumSubtreeSize, ArcMap[int] &edgeExchangeCount, int trials, float perturbation, vector[float] & prio, bint moving_average) 
+  cdef void maxDistanceNode(Graph &, ArcMap[float] &, NodeMap[int] &, Node &, float &)
 
 cdef fused value_t:
   char
@@ -42,6 +56,8 @@ cdef struct neighborhood_t_t:
 
 
 cdef inline value_t maximum(value_t a, value_t b): return a if a>= b else b
+
+
 
 cdef ArcMap[float]* arcMapByLabels(Graph *digraph,
                       ArcMapF *am,
@@ -183,7 +199,6 @@ cdef ArcMap[float]* arcMapByLabels(Graph *digraph,
     neighbors[neighborOffset[i]:neighborOffset[i+1]].sort(order=('b')) 
 
   neighbors[neighborOffset[-1]:].sort(order=('b')) 
-  print "a"
   nsize = 0
   lastA = -1
   lastB = -1
@@ -194,7 +209,6 @@ cdef ArcMap[float]* arcMapByLabels(Graph *digraph,
       lastB = neighbors[i].b
       nsize += 1
 
-  print "b"
   bbb = np.ndarray((nsize,2),dtype=np.int32)
   cdef np.ndarray[dtype=np.int32_t, ndim=2]  coo_ind = bbb
   bbb = np.ndarray((nsize,),dtype=np.float32)
@@ -202,9 +216,7 @@ cdef ArcMap[float]* arcMapByLabels(Graph *digraph,
 
   cdef int j
   j = 0
-  print "c0", neighbors.shape[0]
   lastA = neighbors[0].a
-  print "c1"
   lastB = neighbors[0].b
   cdef int lastPos = 0
   cdef np.ndarray[dtype=np.float32_t,ndim=1] bordervalues
@@ -291,6 +303,56 @@ cdef float callbackSum(float[:] values) nogil:
 
 
 
+
+cdef np.ndarray[ndim=2, dtype=np.int32_t] calcRegionCenters( np.ndarray[np.int32_t, ndim=3, mode="strided"] labelMap, int labelCount ):
+  """
+  Calculate the center of mass for all connected regions in a labelMap
+  """
+  cdef np.ndarray[ndim=2,dtype=np.int32_t] centers = np.zeros((labelCount,3), np.int32)
+  cdef np.ndarray[ndim=2,dtype=np.int64_t] axisSum = np.zeros((labelCount,3), np.int64)
+  cdef np.ndarray[ndim=1,dtype=np.int64_t] count = np.zeros((labelCount,), np.int64)
+
+  cdef int sizeX = labelMap.shape[0]
+  cdef int sizeY = labelMap.shape[1]
+  cdef int sizeZ = labelMap.shape[2]
+
+  cdef int i,x,y,z,label
+
+  for x in range(0,sizeX):
+    for y in range(0,sizeY):
+      for z in range(0,sizeZ):
+        label = labelMap[x,y,z]
+        axisSum[label,0] += x
+        axisSum[label,1] += y
+        axisSum[label,2] += z
+        count[label] += 1
+  
+  for i in range(labelCount):
+    if count[i] > 0:
+      centers[i,0] = <int> (axisSum[i,0] / count[i])
+      centers[i,1] = <int> (axisSum[i,1] / count[i])
+      centers[i,2] = <int> (axisSum[i,2] / count[i])
+
+  return centers
+
+
+
+cdef np.ndarray[ndim=1, dtype=np.int32_t] calcRegionSizes( np.ndarray[np.int32_t, ndim=3, mode="strided"] labelMap, int labelCount ):
+
+  cdef int sizeX = labelMap.shape[0]
+  cdef int sizeY = labelMap.shape[1]
+  cdef int sizeZ = labelMap.shape[2]
+  cdef np.ndarray[ndim=1, dtype=np.int32_t] sizes = np.zeros((labelCount,), np.int32)
+  cdef int i,x,y,z,label
+
+  for x in range(0,sizeX):
+    for y in range(0,sizeY):
+      for z in range(0,sizeZ):
+        label = labelMap[x,y,z]
+        sizes[label] += 1
+  
+  return sizes
+
 cdef class IndexAccessor(object):
   cdef object _indexVol
   cdef object _lut
@@ -298,6 +360,9 @@ cdef class IndexAccessor(object):
   property lut:
     def __get__(self):
       return self._lut
+
+    def __set__(self,value):
+      self._lut[:] = value[:]
 
   def __init__(self,indexVol, lut):
     self._indexVol = indexVol
@@ -317,9 +382,13 @@ cdef class IndexAccessor(object):
     indices = self._indexVol[key].ravel()
     values = value.ravel()
     
-    indicesindices = np.where(values != 0)[0]
+    indicesindices = np.where((values != 0) * (values != 255))[0]
+    deleteindices = np.where(values == 255)[0]
     subindices = indices[indicesindices]
     self._lut[subindices] = values[indicesindices]
+
+    deletesubindices = indices[deleteindices]
+    self._lut[deletesubindices] = 0
 
 # cdef fusion int32_2and3dimension:
 #   np.ndarray[dtype=np.int32_t,ndim=3]
@@ -330,13 +399,24 @@ cdef class Segmentor(object):
   cdef Graph *graph
   cdef ArcMapF *arcMap
 
-  cdef object _labelVol
+  cdef object _regionVol
   cdef object edgeVol
   cdef object _rawData
   cdef object _seeds
   cdef int    _numNodes
   cdef object _segmentation
+  cdef object _uncertainty
   cdef object _edgeWeightFunctor
+  cdef object _regionCenter
+  cdef object _regionSize
+
+  property regionSize:
+    def __get__(self):
+      return self._regionSize
+
+  property regionCenter:
+    def __get__(self):
+      return self._regionCenter
 
   property numNodes:
     def __get__(self):
@@ -344,17 +424,21 @@ cdef class Segmentor(object):
 
   property segmentation:
     def __get__(self):
-      return IndexAccessor(self._labelVol,self._segmentation)
+      return IndexAccessor(self._regionVol,self._segmentation)
   
+  property uncertainty:
+    def __get__(self):
+      return IndexAccessor(self._regionVol, self._uncertainty)
+
   property seeds:
     def __get__(self):
       if self._seeds is None:
         self._seeds = np.ndarray((self._numNodes,),np.uint8)
-      return IndexAccessor(self._labelVol,self._seeds)
+      return IndexAccessor(self._regionVol,self._seeds)
 
-  property labelVol:
+  property regionVol:
     def __get__(self):
-      return self._labelVol
+      return self._regionVol
 
   property raw:
     def __get__(self):
@@ -382,7 +466,7 @@ cdef class Segmentor(object):
     assert labels.ndim <= 3 and labels.ndim >=2
     assert edgePMap.ndim <= 3 and edgePMap.ndim >=2
 
-    self._labelVol = labels
+    self._regionVol = labels
     self.edgeVol = edgePMap
     
     cdef Graph *g = new Graph()
@@ -407,7 +491,7 @@ cdef class Segmentor(object):
     if labels.ndim == 2:
       labels.shape += (1,)
 
-    arcMapByLabels(g,am,self._labelVol, self.edgeVol, mycallback)
+    arcMapByLabels(g,am,self._regionVol, self.edgeVol, mycallback)
 
     cdef NodeIt node
     cdef OutArcIt arcit
@@ -419,35 +503,12 @@ cdef class Segmentor(object):
     self.arcMap = am
     self._numNodes = g.maxNodeId()+1
     self._seeds = np.zeros((self._numNodes,),np.uint8)
-    self._segmentation = np.zeros((self._numNodes,),np.uint8)
+    self._segmentation = np.zeros((self._numNodes,),np.int32)
+    self._uncertainty = np.zeros((self._numNodes,),np.uint8)
+    self._regionCenter = calcRegionCenters(self._regionVol, self._numNodes)
+    self._regionSize = calcRegionSizes(self._regionVol, self._numNodes)
 
-    self.printMinimum()
 
-  def printMinimum(self):
-    cdef Graph *g = self.graph
-    cdef ArcMapF *am = self.arcMap
-
-    cdef NodeIt node
-    cdef OutArcIt arcit
-    cdef int a,b,i
-    cdef float value
-    cdef float value2 = 10e10
-    cdef float value3 = -10e10
-
-    node = NodeIt(deref(g))
-    i = 0
-    while node != INVALID:
-      arcit = OutArcIt(deref(g),node)
-      while arcit != INVALID:
-        value = deref(am)[arcit]
-        if value < value2:
-          value2 = value
-        if value > value3:
-          value3 = value
-        inc(arcit)
-      inc(node)
-    print "MINIMUM EDGE WEIGHT: ", value2
-    print "MAXIMUM EDGE WEIGHT: ", value3
 
 
 
@@ -463,7 +524,7 @@ cdef class Segmentor(object):
     g = f["graph"]
     g.attrs["numNodes"] = self._numNodes
     g.attrs["edgeWeightFunctor"] = self._edgeWeightFunctor
-    d_labels = g.create_dataset("labels", data = self._labelVol)
+    d_labels = g.create_dataset("labels", data = self._regionVol)
 
     cdef np.ndarray[dtype=np.int32_t, ndim = 2] indices = np.ndarray((self.graph.maxArcId()+1,2),dtype=np.int32)
     cdef np.ndarray[dtype=np.float32_t, ndim = 1] data = np.ndarray((self.graph.maxArcId()+1,),dtype=np.float32)
@@ -489,7 +550,9 @@ cdef class Segmentor(object):
     f.flush()
     g.create_dataset("coo_data",data=data)
     f.flush()
-    g.create_dataset("regions", data=self._labelVol)
+    g.create_dataset("regions", data=self._regionVol)
+    g.create_dataset("regionCenter", data=self._regionCenter)
+    g.create_dataset("regionSize", data=self._regionSize)
     g.create_dataset("seeds",data = self._seeds)
     if self._rawData is not None:
       g.create_dataset("raw",data=self._rawData)
@@ -530,14 +593,124 @@ cdef class Segmentor(object):
     instance.arcMap = am
     instance._edgeWeightFunctor = edgeWeightFunctor
     instance._numNodes = numNodes
-    instance._labelVol = labels
+    instance._regionVol = labels
     instance._seeds = seeds
     instance._rawData = gr["raw"][:]
-    instance.printMinimum()
+    instance._regionCenter = gr["regionCenter"][:]
+    instance._regionSize = gr["regionSize"][:]
+    instance._segmentation = np.zeros((numNodes,),np.int32)
+    instance._uncertainty = np.zeros((numNodes,),np.uint8)
+    
     print "   done"
 
     f.close()
     return instance
+
+
+
+
+
+  def getCenterOfRegion(self, np.ndarray[ndim=1, dtype=np.int32_t] regions):
+    """
+    determine the center node from a bunch of labeled nodes (given by regions!=0)
+    the number of the center node, i.e. the index into the region array, is returned
+    """
+    assert regions.shape[0] == self.numNodes
+    cdef Graph* g = self.graph
+    cdef ArcMapF *dm = new ArcMapF(deref(g))
+    cdef NodeMapI *nm = new NodeMapI(deref(g))
+    cdef np.ndarray[ndim=2, dtype=np.int32_t] centers = self._regionCenter
+
+    cdef int i, counter
+    counter = 0
+    for i in range(self.numNodes):
+      if regions[i] == 0:
+        deref(nm)[g.nodeFromId(i)] = 1
+        counter += 1
+      else:
+        deref(nm)[g.nodeFromId(i)] = 0
+    
+    if counter == self.numNodes:
+      del dm
+      del nm
+      return -1, 0
+    
+    cdef int a,b
+    cdef ArcIt ait = ArcIt(deref(g)) 
+    while ait != INVALID:
+      a = g.id(g.source(ait))
+      b = g.id(g.target(ait))
+      # calculate euclidean distance
+      deref(dm)[ait] = sqrt( (centers[a,0] - centers[b,0])**2 + (centers[a,1] - centers[b,1])**2 + (centers[a,2] - centers[b,2])**2)
+      ##print "Distance between node %d and %d : %f" % (a,b, deref(dm)[ait])
+      inc(ait)
+    
+    cdef Node n
+    cdef float distance
+    maxDistanceNode(deref(g), deref(dm), deref(nm), n, distance)
+
+    del dm
+    del nm
+
+    return g.id(n), distance
+
+  def volumeLabelsToRegionLabels(self, np.ndarray[ndim=3,dtype=np.int32_t] labelMap):
+    """
+    Map a labelVolume to the regionVolume such that
+    each region is assigned the label that appears most often in it
+    """
+    cdef int sizeX = labelMap.shape[0]
+    cdef int sizeY = labelMap.shape[1]
+    cdef int sizeZ = labelMap.shape[2]
+    cdef np.ndarray[ndim=3, dtype=np.int32_t] regionVol = self._regionVol
+    cdef int x,y,z,region, label, i, j, oldLabel, bestLabel, bestLabelSize, counter
+    cdef np.ndarray[ndim=1, dtype=np.int32_t] result = np.ndarray((self._numNodes,),np.int32)
+    cdef np.ndarray[ndim=1, dtype=np.int32_t] offsets = np.cumsum(self._regionSize).astype(np.int32)
+    cdef int totalSize = offsets[-1]
+    offsets[1:] = offsets[0:-1]
+    offsets[0] = 0
+
+    cdef np.ndarray[ndim=1, dtype=np.int32_t] regionLabels = np.ndarray((totalSize,), np.int32)
+
+    # determine the labels that appear in one region
+    for x in range(0,sizeX):
+      for y in range(0,sizeY):
+        for z in range(0,sizeZ):
+          region = regionVol[x,y,z]
+          label = labelMap[x,y,z]
+          regionLabels[offsets[region]] = label
+          offsets[region] += 1
+    
+    cdef np.ndarray[ndim=1, dtype=np.int32_t] regionStop = offsets
+    cdef np.ndarray[ndim=1, dtype=np.int32_t] regionStart = np.cumsum(self._regionSize).astype(np.int32)
+    regionStart[1:] = regionStop[0:-1]
+    regionStart[0] = 0
+    
+    # sort the labels that appear in one region
+    for i in range(self._numNodes):
+      regionLabels[regionStart[i]:regionStop[i]].sort()
+
+    # determine the maximum label of each region
+    for i in range(self._numNodes):
+      oldLabel = -1
+      bestLabel = -1
+      bestLabelSize = 0
+      counter = 0
+      for j in range(regionStart[i], regionStop[i]):
+        label = regionLabels[j]
+        if label != oldLabel:
+          if counter > bestLabelSize:
+            bestLabel = oldLabel
+            bestLabelSize = counter
+          counter = 1
+          oldLabel = label
+        else:
+          counter += 1
+      if counter > bestLabelSize:
+        bestLabel = oldLabel
+      result[i] = bestLabel
+    
+    return result
 
 
 cdef class GCSegmentor(Segmentor):
@@ -547,10 +720,10 @@ cdef class GCSegmentor(Segmentor):
       unaries    : a 2D float array, column = region, row = color
     """
     print "segmenting..."
-    self._segmentation = np.ndarray((self._numNodes,),dtype=np.int32)
     # take snapshot of the current graph
     print "   snapshotting graph..."
-    cdef Snapshot sns = Snapshot(deref(self.graph))
+    #cdef Snapshot sns = Snapshot(deref(self.graph))
+
     print "   adding unary potentials..."
 
 
@@ -597,12 +770,14 @@ cdef class GCSegmentor(Segmentor):
     print "     color %r: count = %r" % (1,count1)
 
     print "   restoring graph..."
-    sns.restore()
+    #sns.restore()
+
+    del flow
 
 
 
 
-cdef class MSTSegmentor(Segmentor):
+cdef class MSTSegmentorKruskal(Segmentor):
   def run(self, np.ndarray[dtype=np.float32_t, ndim=2] unaries):
     """
     Run Graph Cut algorithm with the parameters
@@ -610,10 +785,9 @@ cdef class MSTSegmentor(Segmentor):
 
     """
     print "segmenting..."
-    self._segmentation = np.ndarray((self._numNodes,),dtype=np.int32)
     # take snapshot of the current graph
     print "   snapshotting graph..."
-    cdef Snapshot sns = Snapshot(deref(self.graph))
+    #cdef Snapshot sns = Snapshot(deref(self.graph))
     print "   adding unary potentials graph..."
 
 
@@ -713,14 +887,13 @@ cdef class MSTSegmentor(Segmentor):
     print "     unknown color: count = %r" % (unknown,)
 
     print "   restoring graph..."
-    sns.restore()
+
+    del result
+
+    #sns.restore()
 
 
-cdef extern from "segmentation.hxx":
-  cdef void prioMST(Graph &, NodeMap[int] &segmentation, ArcMap[float] &weights, ArcMap[bint] &intree, vector[float] &prio)
-  cdef void edgeExchangeCount(Graph &, NodeMap[int] &seeds, NodeMap[int] &segmentation, ArcMap[float] &weights, ArcMap[bint] &intree, ArcMap[int] &exchangeCount, vector[float] &prio)
-
-cdef class MSTSegmentor2(Segmentor):    
+cdef class MSTSegmentor(Segmentor):    
   
   cdef object _exchangeCount
 
@@ -728,30 +901,33 @@ cdef class MSTSegmentor2(Segmentor):
     def __get__(self):
       if self._exchangeCount is None:
         self._exchangeCount = np.ndarray((self._numNodes,),np.int32)
-      return IndexAccessor(self._labelVol,self._exchangeCount)
+      return IndexAccessor(self._regionVol,self._exchangeCount)
  
-  def run(self, np.ndarray[dtype=np.float32_t, ndim=2] unaries, prios = None):
+  def run(self, np.ndarray[dtype=np.float32_t, ndim=2] unaries, prios = None, uncertainty="exchangeCount", moving_average = False, **kwargs):
     """
     Run Graph Cut algorithm with the parameters
       unaries    : a 2D float array, column = region, row = color
 
     """
     print "segmenting..."
-    self._segmentation = np.ndarray((self._numNodes,),dtype=np.int32)
     # take snapshot of the current graph
 
     print "   snapshotting graph..."
-    cdef Snapshot sns = Snapshot(deref(self.graph))
+    #cdef Snapshot sns = Snapshot(deref(self.graph))
 
     #shorthand
     cdef Graph *g = self.graph
-    cdef ArcMapF *am = self.arcMap
+    cdef ArcMapF *am_backup = self.arcMap
+
+    cdef ArcMapF *am = new ArcMapF(deref(g))
+    cdef ArcIt cait  = ArcIt(deref(g))
+    while cait != INVALID:
+      deref(am)[cait] = deref(am_backup)[cait]
+      inc(cait)
 
     # add source and sink
     cdef int i,j
-    cdef Node nodep
     cdef Arc a
-    cdef vector[Node] sources
 
     cdef NodeMapI *segmentation = new NodeMapI(deref(g))
     cdef NodeMapI *origSeeds = new NodeMapI(deref(g))
@@ -768,13 +944,141 @@ cdef class MSTSegmentor2(Segmentor):
         prio[i] = prios[i]
 
 
+
     print "   running prioMST..."
     cdef ArcMapBool *intree = new ArcMapBool(deref(g))
-    prioMST(deref(g), deref(segmentation), deref(am), deref(intree),prio)
+    if moving_average:
+      prioMSTmav(deref(g), deref(origSeeds), deref(segmentation), deref(am), deref(intree),prio)
 
-    print "   calculating edge exchange count..."
+    else:
+      prioMST(deref(g), deref(origSeeds), deref(segmentation), deref(am), deref(intree),prio)
+
+
     cdef ArcMapI *exchangeCount = new ArcMapI(deref(g))
-    edgeExchangeCount(deref(g), deref(origSeeds), deref(segmentation), deref(am), deref(intree), deref(exchangeCount), prio)
+    cdef NodeMap[float] *localMargin = new NodeMap[float](deref(g))
+
+    # store the segmentatino in the result ndarray
+    cdef np.ndarray[ndim=1,dtype=np.int32_t] outseg = self._segmentation
+
+
+    for i in range(seeds.shape[0]):
+      outseg[i] = deref(segmentation)[g.nodeFromId(i)]
+
+    cdef np.ndarray[ndim=1, dtype=np.int32_t] outExchangeCount 
+    cdef np.ndarray[ndim=1, dtype=np.float32_t] outMargin = np.ndarray((self.numNodes,), np.float32)
+    cdef InArcIt ait
+    if uncertainty == "exchangeCount":
+      print "   calculating edge exchange count..."
+      edgeExchangeCount(deref(g), deref(origSeeds), deref(segmentation), deref(am), deref(intree), deref(exchangeCount), prio)
+      temp = self.exchangeCount # just ensure the array self._exchangeCount exists
+      outExchangeCount = self._exchangeCount
+      outExchangeCount[:] = 0
+      for i in range(outseg.shape[0]):
+        ait = InArcIt(deref(g), g.nodeFromId(i))
+        while ait != INVALID:
+          outExchangeCount[i] += deref(exchangeCount)[ait]
+          inc(ait)
+      ecMin = outExchangeCount.min()
+      ecMax = outExchangeCount.max()
+      print "   ecMin %d, exMax %d" % (ecMin, ecMax)
+      if ecMin == ecMax:
+        ecMax += 1
+      outExchangeCount[:] = (outExchangeCount - ecMin) * 255 / (ecMax - ecMin) 
+    
+      print "   using uncertainty: %s" % (uncertainty,)
+      self._uncertainty[:] = outExchangeCount[:]
+    elif uncertainty == "localMargin":
+      print "   calculating local margin..."
+      prioMSTmargin(deref(g), deref(origSeeds), deref(am), deref(localMargin), prio)
+      for i in range(seeds.shape[0]):
+        outMargin[i] = deref(localMargin)[g.nodeFromId(i)]
+      ecMin = outMargin.min()
+      ecMax = outMargin.max()
+      self._uncertainty[:] = (ecMax - ecMin - outMargin) * 255 / (ecMax - ecMin) 
+
+
+
+
+
+    else:
+      print "ERROR: U N K N O W N  U N C E R T A I N T Y ! %s", uncertainty
+      assert 1 == 2
+
+    print "   restoring original graph..."
+    #sns.restore()
+
+    del segmentation
+    del origSeeds
+    del intree
+    del exchangeCount
+    del am
+    del localMargin
+
+
+cdef class PerturbMSTSegmentor(Segmentor):    
+  
+  cdef object _cumSubtreeSize
+  cdef object _cumExchangeCount
+
+  property cumExchangeCount:
+    def __get__(self):
+      if self._cumExchangeCount is None:
+        self._cumExchangeCount = np.ndarray((self._numNodes,),np.int32)
+      return IndexAccessor(self._regionVol,self._cumExchangeCount)
+  
+  property cumSubtreeSize:
+    def __get__(self):
+      if self._cumSubtreeSize is None:
+        self._cumSubtreeSize = np.ndarray((self._numNodes,),np.int64)
+      return IndexAccessor(self._regionVol,self._cumSubtreeSize)
+ 
+  def run(self, np.ndarray[dtype=np.float32_t, ndim=2] unaries, prios = None, trials = 5, perturbation = 0.1, uncertainty="cumSubtreeSize", moving_average = False, **kwargs):
+
+
+    """
+    Run Graph Cut algorithm with the parameters
+      unaries    : a 2D float array, column = region, row = color
+
+    """
+    print "segmenting..."
+    # take snapshot of the current graph
+
+    print "   snapshotting graph..."
+    #cdef Snapshot sns = Snapshot(deref(self.graph))
+
+    #shorthand
+    cdef Graph *g = self.graph
+    cdef ArcMapF *am = self.arcMap
+
+    # add source and sink
+    cdef int i,j
+    cdef Arc a
+
+    cdef NodeMapI *segmentation = new NodeMapI(deref(g))
+    cdef NodeMapI *origSeeds = new NodeMapI(deref(g))
+    cdef np.ndarray[dtype=np.uint8_t,ndim=1] seeds = self._seeds
+    for i in range(seeds.shape[0]):
+      segmentation.set(g.nodeFromId(i),seeds[i])
+      origSeeds.set(g.nodeFromId(i),seeds[i])
+
+
+
+    cdef vector[float] prio
+    prio.resize(unaries.shape[1], 1.0)
+    if prios is not None:
+      assert len(prios) == unaries.shape[1]
+      for i in range(prio.size()):
+        prio[i] = prios[i]
+
+
+
+    print "   running prioMST..."
+    cdef ArcMapI *exchangeCount = new ArcMapI(deref(g))
+    cdef NodeMapL *cumSubtreeSize = new NodeMapL(deref(g))
+
+
+    prioMSTperturb(deref(g), deref(origSeeds), deref(segmentation), deref(am), deref(cumSubtreeSize), deref(exchangeCount), trials, perturbation, prio, moving_average)
+    print "   finished..."
 
     # store the segmentatino in the result ndarray
     cdef np.ndarray[ndim=1,dtype=np.int32_t] outseg = self._segmentation
@@ -782,16 +1086,46 @@ cdef class MSTSegmentor2(Segmentor):
       outseg[i] = deref(segmentation)[g.nodeFromId(i)]
 
     # calculate the exchange count uncertainty
-    temp = self.exchangeCount # just ensure the array self._exchangeCount exists
-    cdef np.ndarray[ndim=1, dtype=np.int32_t] outExchangeCount = self._exchangeCount
+    temp = self.cumExchangeCount # just ensure the array self._exchangeCount exists
+    cdef np.ndarray[ndim=1, dtype=np.int32_t] outExchangeCount = self._cumExchangeCount
     outExchangeCount[:] = 0
-    cdef OutArcIt ait
+    cdef InArcIt ait
+
     for i in range(outseg.shape[0]):
-      ait = OutArcIt(deref(g), g.nodeFromId(i))
+      ait = InArcIt(deref(g), g.nodeFromId(i))
       while ait != INVALID:
         outExchangeCount[i] += deref(exchangeCount)[ait]
         inc(ait)
     outExchangeCount[:] = (outExchangeCount - outExchangeCount.min()) * 255 / (outExchangeCount.max() - outExchangeCount.min()) 
 
+    # calculate the subtree size uncertainty
+    temp = self.cumSubtreeSize # just ensure the array self._exchangeCount exists
+    cdef np.ndarray[ndim=1, dtype=np.int64_t] outSubtreeSize = self._cumSubtreeSize
+    cdef NodeIt nit
+    for i in range(outSubtreeSize.shape[0]):
+      outSubtreeSize[i] = deref(cumSubtreeSize)[g.nodeFromId(i)]
+      inc(nit)
+
+    cdef long tmin = outSubtreeSize.min()
+    cdef long tmax = outSubtreeSize.max()
+    outSubtreeSize[:] = (outSubtreeSize - tmin) * 255 / (tmax-tmin) 
+
+    if uncertainty == "cumSubtreeSize":
+      print "   using uncertainty: %s" % (uncertainty,)
+      self._uncertainty[:] = outSubtreeSize.astype(np.uint8)
+    elif uncertainty == "cumExchangeCount":
+      print "   using uncertainty: %s" % (uncertainty,)
+      self._uncertainty[:] = outExchangeCount[:].astype(np.uint8)
+    else:
+      print "ERROR: U N K N O W N  U N C E R T A I N T Y ! %s", uncertainty
+      assert 1 == 2
+
+
     print "   restoring original graph..."
-    sns.restore()
+    #sns.restore()
+
+    del exchangeCount
+    del cumSubtreeSize
+    del segmentation
+    del origSeeds
+
