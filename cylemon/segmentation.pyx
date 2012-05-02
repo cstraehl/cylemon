@@ -1,10 +1,11 @@
-
-
+#cython: boundscheck=False
 import pyximport; pyximport.install(pyimport=False)
 import h5py
 cimport cython
 from cython.operator cimport dereference as deref, preincrement as inc
 import cython
+import sys
+import time
 
 import numpy as np
 cimport numpy as np
@@ -14,7 +15,6 @@ from libcpp.deque cimport deque
 from libcpp.vector cimport vector
 
 from cython.operator cimport dereference as deref, preincrement as inc
-
 
 from cylemon.lemon cimport preflow
 from cylemon.lemon cimport kruskal
@@ -57,8 +57,6 @@ cdef struct neighborhood_t_t:
 
 cdef inline value_t maximum(value_t a, value_t b): return a if a>= b else b
 
-
-
 cdef ArcMap[float]* arcMapByLabels(Graph *digraph,
                       ArcMapF *am,
                       np.ndarray[np.int32_t, ndim=3, mode="strided"] labelMap,
@@ -78,6 +76,7 @@ cdef ArcMap[float]* arcMapByLabels(Graph *digraph,
   a coo matrix as a tuple (coo_ind, coo_data) (see scipy.sparse) 
   """
 
+  ragTimeStart = time.time()
   print "Constructing RAG..."
   cdef np.ndarray[np.float32_t, ndim=3] edgeMap =  nodeMapIn
 
@@ -94,16 +93,20 @@ cdef ArcMap[float]* arcMapByLabels(Graph *digraph,
     for y in range(0,sizeY):
       for z in range(0,sizeZ):
         maxLabel = maximum(maxLabel,<int>labelMap[x,y,z])  
+  print "   maximum label = %d" % maxLabel
 
   digraph.reserveNode(maxLabel)
 
   cdef np.ndarray[dtype=np.int32_t,ndim=1] neighborCount = np.zeros((maxLabel+1,), dtype=np.int32)
+  print "   neighborCount: %f MB" % (neighborCount.nbytes / float(1024**2),) 
 
   cdef int totalNeighborhoods = 0
 
-  print "   counting neighborhood sizes"
+  timeStart = time.time()
   # count the number of labels
   for x in range(sizeX):
+    sys.stdout.write("\r  counting nhood sizes: %f%%          " % (100.0*x/float(sizeX),))
+    sys.stdout.flush()
     for y in range(sizeY):
       for z in range(sizeZ):
         a = labelMap[x,y,z]
@@ -125,11 +128,14 @@ cdef ArcMap[float]* arcMapByLabels(Graph *digraph,
             neighborCount[a] += 1
             neighborCount[b] += 1
             totalNeighborhoods += 2
+  print "\n   counting nhood sizes: %f sec.          " % (time.time()-timeStart)
 
   cdef np.ndarray[dtype=np.int32_t,ndim=1] neighborOffset, offsetBackup
   neighborOffset = np.cumsum(neighborCount).astype(np.int32)
+  print "   neighborOffset: %f MB" % (neighborOffset.nbytes / float(1024**2),) 
   assert neighborOffset[-1] == totalNeighborhoods
   offsetBackup = neighborOffset.copy()
+  print "   offsetBackup: %f MB" % (offsetBackup.nbytes / float(1024**2),) 
   offsetBackup[1:] = neighborOffset[:-1]
   offsetBackup[0] = 0
   neighborOffset[:] = offsetBackup[:]
@@ -137,12 +143,16 @@ cdef ArcMap[float]* arcMapByLabels(Graph *digraph,
   neighborhood_t = np.dtype([('a', np.int32), ('b', np.int32), ('val', np.float32)], align = True)
 
   bbb = np.ndarray((totalNeighborhoods,),dtype=neighborhood_t)
+  print "   bbb: %f MB" % (bbb.nbytes / float(1024**2),) 
   cdef np.ndarray[dtype=neighborhood_t_t, ndim=1]  neighbors = bbb
 
+  timeStart = time.time()
   print "   adding values to neighborhoods (count=%r) ..." % (totalNeighborhoods,)
   cdef float av,bv
   # add everything to the neighborhood array
   for x in range(0,sizeX):
+    sys.stdout.write("\r  add to nhood array %f%%          " % (100.0*x/float(sizeX)))
+    sys.stdout.flush()
     for y in range(0,sizeY):
       for z in range(0,sizeZ):
         a = labelMap[x,y,z]
@@ -183,7 +193,7 @@ cdef ArcMap[float]* arcMapByLabels(Graph *digraph,
             neighbors[neighborOffset[b]].a = b
             neighbors[neighborOffset[b]].b = a
             neighborOffset[b]+=1
-
+  print "\n    add to nhood array: %f sec." % (time.time()-timeStart)
 
   cdef int nsize
   cdef int lastA = -1
@@ -194,9 +204,14 @@ cdef ArcMap[float]* arcMapByLabels(Graph *digraph,
   print "   sorting neighborhoods..."
   neighborOffset[:] = offsetBackup[:]
 
-  # sort teh neighborhood information
+  # sort the neighborhood information
+  timeStart = time.time()
   for i in range(1, neighborOffset.shape[0]-1):
+    if i % 100 == 0:
+        sys.stdout.write("\r   %f%%         " % (100.0*i/float(neighborOffset.shape[0])))
+        sys.stdout.flush()
     neighbors[neighborOffset[i]:neighborOffset[i+1]].sort(order=('b')) 
+  print "\n   ... took %f sec." % (time.time()-timeStart)
 
   neighbors[neighborOffset[-1]:].sort(order=('b')) 
   nsize = 0
@@ -222,7 +237,12 @@ cdef ArcMap[float]* arcMapByLabels(Graph *digraph,
   cdef np.ndarray[dtype=np.float32_t,ndim=1] bordervalues
   print "   constructing coo graph..."
   # FINALLY, construct the true graph
+  cdef int ll
+  ll = neighbors.shape[0]
   for i in range(neighbors.shape[0]):
+    if i % 100 == 0:
+        sys.stdout.write("\r   %f%%          " % (100.0*i/float(ll)))
+        sys.stdout.flush()
     if neighbors[i].a != lastA or neighbors[i].b != lastB:
       coo_ind[j,0] = lastA
       coo_ind[j,1] = lastB
@@ -241,7 +261,7 @@ cdef ArcMap[float]* arcMapByLabels(Graph *digraph,
   coo_data[j] = edgeValueCallback(bordervalues)
  
 
-  print "   constructing lemon graph..."
+  print "\n   constructing lemon graph..."
   digraph.clear()
   digraph.reserveNode(maxLabel+1)
   digraph.reserveArc(coo_ind.shape[0])
@@ -257,6 +277,7 @@ cdef ArcMap[float]* arcMapByLabels(Graph *digraph,
   print "   constructed graph with"
   print "      num Nodes", maxLabel+1
   print "      num Arcs ", coo_ind.shape[0]
+  print "      took %f sec." % (time.time() - ragTimeStart)
 
 
 
@@ -301,9 +322,6 @@ cdef float callbackSum(float[:] values) nogil:
     value += values[i]
   return value
 
-
-
-
 cdef np.ndarray[ndim=2, dtype=np.int32_t] calcRegionCenters( np.ndarray[np.int32_t, ndim=3, mode="strided"] labelMap, int labelCount ):
   """
   Calculate the center of mass for all connected regions in a labelMap
@@ -334,8 +352,6 @@ cdef np.ndarray[ndim=2, dtype=np.int32_t] calcRegionCenters( np.ndarray[np.int32
       centers[i,2] = <int> (axisSum[i,2] / count[i])
 
   return centers
-
-
 
 cdef np.ndarray[ndim=1, dtype=np.int32_t] calcRegionSizes( np.ndarray[np.int32_t, ndim=3, mode="strided"] labelMap, int labelCount ):
 
@@ -508,10 +524,6 @@ cdef class Segmentor(object):
     self._regionCenter = calcRegionCenters(self._regionVol, self._numNodes)
     self._regionSize = calcRegionSizes(self._regionVol, self._numNodes)
 
-
-
-
-
   def saveH5(self, filename, group):
     print "saving segmentor to %r[%r] ..." % (filename, group)
     f = h5py.File(filename,"w")
@@ -605,10 +617,6 @@ cdef class Segmentor(object):
 
     f.close()
     return instance
-
-
-
-
 
   def getCenterOfRegion(self, np.ndarray[ndim=1, dtype=np.int32_t] regions):
     """
