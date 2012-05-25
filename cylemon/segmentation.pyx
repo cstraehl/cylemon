@@ -523,17 +523,19 @@ cdef class Segmentor(object):
     self._uncertainty = np.zeros((self._numNodes,),np.uint8)
     self._regionCenter = calcRegionCenters(self._regionVol, self._numNodes)
     self._regionSize = calcRegionSizes(self._regionVol, self._numNodes)
-
-  def saveH5(self, filename, group):
-    print "saving segmentor to %r[%r] ..." % (filename, group)
+  
+  def saveH5(self, filename, groupname):
+    print "saving segmentor to %r[%r] ..." % (filename, groupname)
     f = h5py.File(filename,"w")
     try:
-      f.create_group("graph")
+      f.create_group(groupname)
     except:
       pass
+    h5g = f[groupname]
+    self.saveH5G(h5g)
 
-    
-    g = f["graph"]
+  def saveH5G(self, h5g):
+    g = h5g
     g.attrs["numNodes"] = self._numNodes
     g.attrs["edgeWeightFunctor"] = self._edgeWeightFunctor
     d_labels = g.create_dataset("labels", data = self._regionVol)
@@ -559,23 +561,25 @@ cdef class Segmentor(object):
       inc(node)
     
     g.create_dataset("coo_indices",data=indices)
-    f.flush()
     g.create_dataset("coo_data",data=data)
-    f.flush()
     g.create_dataset("regions", data=self._regionVol)
     g.create_dataset("regionCenter", data=self._regionCenter)
     g.create_dataset("regionSize", data=self._regionSize)
     g.create_dataset("seeds",data = self._seeds)
     if self._rawData is not None:
       g.create_dataset("raw",data=self._rawData)
-    f.close()
     print "   done"
+  
+  @classmethod
+  def loadH5(cls,file_name, group_name):
+    print "loading segmentor from %r[%r] ..." % (file_name, group_name)
+    h5f = h5py.File(file_name, "r")
+    h5g = h5f[group_name]
+    return cls.loadH5G(h5g)
 
   @classmethod
-  def loadH5(cls,filename,groupname):
-    print "loading segmentor from %r[%r] ..." % (filename, groupname)
-    f = h5py.File(filename,"r")
-    gr = f[groupname]
+  def loadH5G(cls,h5g):
+    gr = h5g
     numNodes = gr.attrs["numNodes"]
     edgeWeightFunctor = gr.attrs["edgeWeightFunctor"]
 
@@ -615,7 +619,6 @@ cdef class Segmentor(object):
     
     print "   done"
 
-    f.close()
     return instance
 
   def getCenterOfRegion(self, np.ndarray[ndim=1, dtype=np.int32_t] regions):
@@ -1003,11 +1006,6 @@ cdef class MSTSegmentor(Segmentor):
       ecMin = outMargin.min()
       ecMax = outMargin.max()
       self._uncertainty[:] = (ecMax - ecMin - outMargin) * 255 / (ecMax - ecMin) 
-
-
-
-
-
     else:
       print "ERROR: U N K N O W N  U N C E R T A I N T Y ! %s", uncertainty
       assert 1 == 2
