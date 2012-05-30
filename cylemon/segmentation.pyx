@@ -621,6 +621,25 @@ cdef class Segmentor(object):
 
     return instance
 
+
+  @classmethod
+  def fromOtherSegmentor(cls, Segmentor seg):
+    cdef Segmentor instance = cls(labels=seg._regionVol)
+    instance.graph = seg.graph
+    instance.arcMap = seg.arcMap
+    instance._edgeWeightFunctor = seg._edgeWeightFunctor
+    instance._numNodes = seg._numNodes
+    instance._regionVol = seg._regionVol
+    instance._seeds = seg._seeds
+    instance._rawData = seg._rawData
+    instance._regionCenter = seg._regionCenter
+    instance._regionSize = seg._regionSize
+    instance._segmentation = seg._segmentation
+    instance._uncertainty = seg._uncertainty
+    return instance
+
+
+
   def getCenterOfRegion(self, np.ndarray[ndim=1, dtype=np.int32_t] regions):
     """
     determine the center node from a bunch of labeled nodes (given by regions!=0)
