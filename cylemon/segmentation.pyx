@@ -419,12 +419,34 @@ cdef class Segmentor(object):
   cdef object edgeVol
   cdef object _rawData
   cdef object _seeds
+  cdef object _objects
+  cdef object _object_names
+  cdef object _object_seeds_fg
+  cdef object _object_seeds_bg
   cdef int    _numNodes
   cdef object _segmentation
   cdef object _uncertainty
   cdef object _edgeWeightFunctor
   cdef object _regionCenter
   cdef object _regionSize
+
+  property object_names:
+    def __get__(self):
+      return self._object_names
+    def __set__(self, value):
+      self._object_names = value
+
+  property object_seeds_fg:
+    def __get__(self):
+      return self._object_seeds_fg
+    def __set__(self, value):
+      self._object_seeds_fg = value
+
+  property object_seeds_bg:
+    def __get__(self):
+      return self._object_seeds_bg
+    def __set__(self, value):
+      self._object_seeds_bg = value
 
   property regionSize:
     def __get__(self):
@@ -451,6 +473,12 @@ cdef class Segmentor(object):
       if self._seeds is None:
         self._seeds = np.ndarray((self._numNodes,),np.uint8)
       return IndexAccessor(self._regionVol,self._seeds)
+  
+  property objects:
+    def __get__(self):
+      if self._objects is None:
+        self._objects = np.ndarray((self._numNodes,),np.uint32)
+      return IndexAccessor(self._regionVol,self._objects)
 
   property regionVol:
     def __get__(self):
@@ -474,7 +502,10 @@ cdef class Segmentor(object):
                   represents the cost of a node being separated from its neighbors
     """
     self._seeds = None
-    self._rawData = None
+    self._rawData = None  
+    self.object_names = dict()
+    self.object_seeds_fg = dict()
+    self.object_seeds_bg = dict()      
     if edgePMap is None:
       return
     assert labels.dtype == np.int32
@@ -519,6 +550,10 @@ cdef class Segmentor(object):
     self.arcMap = am
     self._numNodes = g.maxNodeId()+1
     self._seeds = np.zeros((self._numNodes,),np.uint8)
+
+    self._objects = np.zeros((self._numNodes,),np.uint32)
+
+
     self._segmentation = np.zeros((self._numNodes,),np.int32)
     self._uncertainty = np.zeros((self._numNodes,),np.uint8)
     self._regionCenter = calcRegionCenters(self._regionVol, self._numNodes)
@@ -538,7 +573,7 @@ cdef class Segmentor(object):
     g = h5g
     g.attrs["numNodes"] = self._numNodes
     g.attrs["edgeWeightFunctor"] = self._edgeWeightFunctor
-    d_labels = g.create_dataset("labels", data = self._regionVol)
+    g.create_dataset("labels", data = self._regionVol)
 
     cdef np.ndarray[dtype=np.int32_t, ndim = 2] indices = np.ndarray((self.graph.maxArcId()+1,2),dtype=np.int32)
     cdef np.ndarray[dtype=np.float32_t, ndim = 1] data = np.ndarray((self.graph.maxArcId()+1,),dtype=np.float32)
@@ -566,8 +601,29 @@ cdef class Segmentor(object):
     g.create_dataset("regionCenter", data=self._regionCenter)
     g.create_dataset("regionSize", data=self._regionSize)
     g.create_dataset("seeds",data = self._seeds)
+    g.create_dataset("objects",data = self._objects)
+
+    sg = g.create_group("objects_seeds")
+    
+    g.file.flush()
+    
+    # delete old attributes
+    for k in sg.attrs.keys():
+      del sg.attrs[k]
+      
+
+    # insert new attributes
+    for k,v in self.object_names.items():
+      print "   -> saving object %r with Nr=%r" % (k,v)
+      sg.attrs[k] = v
+      og = sg.create_group(k)
+      og.create_dataset("foreground", data = self.object_seeds_fg[k])
+      og.create_dataset("background", data = self.object_seeds_bg[k])
+
     if self._rawData is not None:
       g.create_dataset("raw",data=self._rawData)
+
+    g.file.flush()
     print "   done"
   
   @classmethod
@@ -587,6 +643,11 @@ cdef class Segmentor(object):
     cdef np.ndarray[dtype=np.int32_t, ndim = 2] indices = gr["coo_indices"][:]
     cdef np.ndarray[dtype=np.float32_t, ndim = 1] data = gr["coo_data"][:]
     cdef np.ndarray[dtype=np.uint8_t,ndim=1] seeds = gr["seeds"][:]
+    cdef np.ndarray[dtype=np.uint32_t,ndim=1] objects 
+    if "objects" in gr.keys():
+      objects = gr["objects"][:]
+    else:
+      objects = np.zeros((numNodes,), np.uint32)
 
     cdef Segmentor instance = cls(labels=labels)
 
@@ -611,11 +672,19 @@ cdef class Segmentor(object):
     instance._numNodes = numNodes
     instance._regionVol = labels
     instance._seeds = seeds
+    instance._objects = objects
     instance._rawData = gr["raw"][:]
     instance._regionCenter = gr["regionCenter"][:]
     instance._regionSize = gr["regionSize"][:]
     instance._segmentation = np.zeros((numNodes,),np.int32)
     instance._uncertainty = np.zeros((numNodes,),np.uint8)
+
+    if "objects" in gr.keys():
+      for k,v in gr["objects_seeds"].attrs.items():
+        print "   -> loading object %r with Nr=%r" % (k,v)
+        instance.object_names[k] = v
+        instance.object_seeds_fg[k] = gr["objects_seeds"][k]["foreground"][:]
+        instance.object_seeds_bg[k] = gr["objects_seeds"][k]["background"][:]
     
     print "   done"
 
@@ -631,6 +700,10 @@ cdef class Segmentor(object):
     instance._numNodes = seg._numNodes
     instance._regionVol = seg._regionVol
     instance._seeds = seg._seeds
+    instance._objects = seg._objects
+    instance.object_names = seg.object_names
+    instance.object_seeds_fg = seg.object_seeds_fg
+    instance.object_seeds_bg = seg.object_seeds_bg
     instance._rawData = seg._rawData
     instance._regionCenter = seg._regionCenter
     instance._regionSize = seg._regionSize
