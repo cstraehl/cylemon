@@ -122,6 +122,7 @@ void prioMSTmargin(const GT &graph, const NMS & seeds, const AMF & weights, NMF 
   }
 }
 
+
 template <typename GT, typename NMS, typename NMS2, typename AMF, typename AMB>
 void prioMST(const GT &graph, const NMS & seeds, NMS2 & segmentation, const AMF & weights, AMB & intree, const vector<float> &prio) {
   typedef typename GT::Node Node;

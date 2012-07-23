@@ -1169,7 +1169,6 @@ cdef class PerturbMSTSegmentor(Segmentor):
         prio[i] = prios[i]
 
 
-
     print "   running prioMST..."
     cdef ArcMapI *exchangeCount = new ArcMapI(deref(g))
     cdef NodeMapL *cumSubtreeSize = new NodeMapL(deref(g))

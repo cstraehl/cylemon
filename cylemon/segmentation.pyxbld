@@ -8,5 +8,5 @@ def make_ext(modname, pyxfilename):
                     libraries = ["stdc++", "emon", "gomp"],
                     include_dirs = [pyxdir],
                     language='C++',
-                    extra_compile_args=['-O1', '-fopenmp'])
+                    extra_compile_args=['-O3', '-fopenmp'])
 
