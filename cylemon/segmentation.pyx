@@ -1,5 +1,5 @@
 #cython: boundscheck=False
-import pyximport; pyximport.install(pyimport=False)
+#import pyximport; pyximport.install(pyimport=False)
 import h5py
 cimport cython
 from cython.operator cimport dereference as deref, preincrement as inc

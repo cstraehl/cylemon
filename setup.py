@@ -19,10 +19,10 @@ setup(
     packages=['cylemon'],
     long_description=read('README'),
     package_dir={'cylemon': "cylemon"},
-    package_data={'cylemon' : ["*.py", "lemon/*.pxd", "lemon/*.py", "*.hxx", "*.pyx", "*.pyxbld", "*.so"]},
+    package_data={'cylemon' : ["*.py", "lemon/*.pxd", "lemon/*.py", "*.hxx", "*.pyx", "*.pyxbld", "*.so", "*.pxd"]},
 
     cmdclass = {'build_ext': build_ext},
-    ext_modules = [Extension(name="cylemon/segmentation",
+    ext_modules = [Extension(name="cylemon.segmentation",
                     sources=["cylemon/segmentation.pyx"],
                     libraries = ["stdc++", "emon", "gomp"],
                     language='C++',
