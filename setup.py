@@ -1,3 +1,9 @@
+#
+#
+#
+
+
+
 import os
 from setuptools import setup, find_packages
 from distutils.core import setup
@@ -23,25 +29,46 @@ assert int(vers[0]) >= 2 and int(vers[1]) >= 7 and int(vers[2]) >= 3, """
 def read(fname):
     return open(os.path.join(os.path.dirname(__file__), fname)).read()
 
-setup(
-    name = "cylemon",
-    version = "0.0.1",
-    author = "Christoph Straehle",
-    author_email = "christoph.straehle@iwr.uni-heidelberg.de",
-    description = ("very partial cython bindings for the lemon graph library"),
-    license = "BSD",
-    keywords = "cython python lemon bindings",
-    url = "",
-    packages=['cylemon'],
-    long_description=read('README'),
-    package_dir={'cylemon': "cylemon"},
-    package_data={'cylemon' : ["*.py", "lemon/*.pxd", "lemon/*.py", "*.hxx", "*.pyx", "*.pyxbld", "*.so", "*.pxd"]},
+try:
+    setup(
+        name = "cylemon",
+        version = "0.0.1",
+        author = "Christoph Straehle",
+        author_email = "christoph.straehle@iwr.uni-heidelberg.de",
+        description = ("very partial cython bindings for the lemon graph library"),
+        license = "BSD",
+        keywords = "cython python lemon bindings",
+        url = "",
+        packages=['cylemon'],
+        long_description=read('README'),
+        package_dir={'cylemon': "cylemon"},
+        package_data={'cylemon' : ["*.py", "lemon/*.pxd", "lemon/*.py", "*.hxx", "*.pyx", "*.pyxbld", "*.so", "*.pxd"]},
 
-    cmdclass = {'build_ext': build_ext},
-    ext_modules = [Extension(name="cylemon.segmentation",
-                    sources=["cylemon/segmentation.pyx"],
-                    libraries = ["stdc++", "emon", "gomp"],
-                    language='C++',
-                    extra_compile_args=['-O3', '-fopenmp'])
-                  ]
-)
+        cmdclass = {'build_ext': build_ext},
+        ext_modules = [Extension(name="cylemon.segmentation",
+                        sources=["cylemon/segmentation.pyx"],
+                        libraries = ["stdc++", "emon", "gomp"],
+                        language='C++',
+                        extra_compile_args=['-O3', '-fopenmp'],
+                        include_dirs = ['/usr/local/include'])
+                      ]
+    )
+except Exception as e:
+    print """
+        
+        If the setup.py script fails, this is possibly due to 
+
+            *  missing lemon graph library:
+               - please go to  https://lemon.cs.elte.hu/ and download the latest version
+               - compile the lemon graph library with the -DBUILD_SHARED_LIBS=1 flag set !!!!!!!!
+
+            * missing openmp libraries
+               - install the development packages for openmp for your distribution. 
+
+            * missing include paths for lemon includes or numpy includes
+               - add the correct include paths to the "include_dirs" list
+                 of the ext_modules section in this file.
+
+    """
+    raise e
+
