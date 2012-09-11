@@ -1,8 +1,24 @@
 import os
-from setuptools import setup
+from setuptools import setup, find_packages
 from distutils.core import setup
 from distutils.extension import Extension
 from Cython.Distutils import build_ext
+import string 
+
+import setuptools
+import distutils
+
+vers = string.split(distutils.__version__, ".")
+assert int(vers[0]) >= 2 and int(vers[1]) >= 7 and int(vers[2]) >= 3, """
+        \n
+        Please make sure you have installed the latest version of setuptools and distutils !!! \n
+
+        update distutils and setuptolls with easy_install :\n
+        \n
+                    sudo easy_install -U distribute\n
+                   """ 
+
+
 
 def read(fname):
     return open(os.path.join(os.path.dirname(__file__), fname)).read()
