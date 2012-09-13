@@ -35,7 +35,8 @@ cdef extern from "math.h":
 
 
 cdef extern from "segmentation.hxx":
-  cdef void prioMST(Graph &, NodeMap[int] &seeds, NodeMap[int] &segmentation, ArcMap[float] &weights, ArcMap[bint] &intree, vector[float] &prio)
+  cdef void prioMST(Graph &, NodeMap[int] &seeds, NodeMap[int] &segmentation, ArcMap[float] &weights,
+                    ArcMap[bint] &intree, vector[float] &prio, int noBiasBelow)
   cdef void prioMSTmargin(Graph &, NodeMap[int] &, ArcMap[float] &, NodeMap[float] &, vector[float] &)
   cdef void prioMSTmav(Graph &, NodeMap[int] &seeds, NodeMap[int] &segmentation, ArcMap[float] &weights, ArcMap[bint] &intree, vector[float] &prio)
   cdef void edgeExchangeCount(Graph &, NodeMap[int] &seeds, NodeMap[int] &segmentation, ArcMap[float] &weights, ArcMap[bint] &intree, ArcMap[int] &exchangeCount, vector[float] &prio)
@@ -62,6 +63,7 @@ cdef ArcMap[float]* arcMapByLabels(Graph *digraph,
                       np.ndarray[np.int32_t, ndim=3, mode="strided"] labelMap,
                       np.ndarray[np.float32_t, ndim=3, mode="strided"] nodeMapIn,
                       float (*edgeValueCallback)(float[:]),
+                      object precomputedEdgeWeights
                       ):
   """
   builds the adjacency graph structure for an 3D image.
@@ -246,10 +248,23 @@ cdef ArcMap[float]* arcMapByLabels(Graph *digraph,
     if neighbors[i].a != lastA or neighbors[i].b != lastB:
       coo_ind[j,0] = lastA
       coo_ind[j,1] = lastB
-      bordervalues = neighbors['val'][lastPos:i]
+
       assert (neighbors['a'][lastPos:i] == lastA).all()
       assert (neighbors['b'][lastPos:i] == lastB).all()
-      coo_data[j] = edgeValueCallback(bordervalues)
+     
+      if precomputedEdgeWeights is None:
+        bordervalues = neighbors['val'][lastPos:i]
+        coo_data[j] = edgeValueCallback(bordervalues)
+      else:
+        if lastA > lastB:
+          t = (lastB, lastA)
+        else:
+          t = (lastA, lastB)
+
+        if t not in precomputedEdgeWeights:
+          raise RuntimeError("%s not in precomputedEdgeWeights" % (t,))
+        coo_data[j] = 255*precomputedEdgeWeights[t]
+
       lastA = neighbors[i].a
       lastB = neighbors[i].b
       lastPos = i
@@ -257,9 +272,18 @@ cdef ArcMap[float]* arcMapByLabels(Graph *digraph,
 
   coo_ind[j,0] = lastA
   coo_ind[j,1] = lastB
-  bordervalues = neighbors['val'][lastPos:]
-  coo_data[j] = edgeValueCallback(bordervalues)
- 
+
+  if precomputedEdgeWeights is None:
+    bordervalues = neighbors['val'][lastPos:]
+    coo_data[j] = edgeValueCallback(bordervalues)
+  else:
+    if lastA > lastB:
+      t = (lastB, lastA)
+    else:
+      t = (lastA, lastB)
+    if t not in precomputedEdgeWeights:
+      raise RuntimeError("%s not in precomputedEdgeWeights" % (t,))
+    coo_data[j] = 255*precomputedEdgeWeights[t]
 
   print "\n   constructing lemon graph..."
   digraph.clear()
@@ -493,7 +517,8 @@ cdef class Segmentor(object):
   def __init__(self, labels,
                      edgePMap = None,
                      edgeWeightFunctor = "average",
-                     rawData = None):
+                     rawData = None,
+                     precomputedEdgeWeights=None):
 
     """
     build lemon adjacency graph
@@ -538,7 +563,7 @@ cdef class Segmentor(object):
     if labels.ndim == 2:
       labels.shape += (1,)
 
-    arcMapByLabels(g,am,self._regionVol, self.edgeVol, mycallback)
+    arcMapByLabels(g,am,self._regionVol, self.edgeVol, mycallback, precomputedEdgeWeights)
 
     cdef NodeIt node
     cdef OutArcIt arcit
@@ -1006,7 +1031,8 @@ cdef class MSTSegmentor(Segmentor):
         self._exchangeCount = np.ndarray((self._numNodes,),np.int32)
       return IndexAccessor(self._regionVol,self._exchangeCount)
  
-  def run(self, np.ndarray[dtype=np.float32_t, ndim=2] unaries, prios = None, uncertainty="exchangeCount", moving_average = False, **kwargs):
+  def run(self, np.ndarray[dtype=np.float32_t, ndim=2] unaries, prios = None, uncertainty="exchangeCount",
+          moving_average = False, noBiasBelow = 0, **kwargs):
     """
     Run Graph Cut algorithm with the parameters
       unaries    : a 2D float array, column = region, row = color
@@ -1054,7 +1080,7 @@ cdef class MSTSegmentor(Segmentor):
       prioMSTmav(deref(g), deref(origSeeds), deref(segmentation), deref(am), deref(intree),prio)
 
     else:
-      prioMST(deref(g), deref(origSeeds), deref(segmentation), deref(am), deref(intree),prio)
+      prioMST(deref(g), deref(origSeeds), deref(segmentation), deref(am), deref(intree),prio, noBiasBelow)
 
 
     cdef ArcMapI *exchangeCount = new ArcMapI(deref(g))
@@ -1098,6 +1124,8 @@ cdef class MSTSegmentor(Segmentor):
       ecMin = outMargin.min()
       ecMax = outMargin.max()
       self._uncertainty[:] = (ecMax - ecMin - outMargin) * 255 / (ecMax - ecMin) 
+    elif uncertainty == "none":
+      pass
     else:
       print "ERROR: U N K N O W N  U N C E R T A I N T Y ! %s", uncertainty
       assert 1 == 2
@@ -1226,3 +1254,4 @@ cdef class PerturbMSTSegmentor(Segmentor):
     del segmentation
     del origSeeds
 
+# vim: set expandtab tw=120 shiftwidth=2 softtabstop=2 tabstop=2:
