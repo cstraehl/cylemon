@@ -421,7 +421,7 @@ cdef class IndexAccessor(object):
     """
     indices = self._indexVol[key].ravel()
     if not isinstance(value, np.ndarray):
-      a = np.ndarray(indices.shape)
+      a = np.ndarray(indices.shape, self._lut.dtype)
       a[:] = value
       value = a
     values = value.ravel()
