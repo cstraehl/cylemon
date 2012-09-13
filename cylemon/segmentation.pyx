@@ -543,10 +543,10 @@ cdef class Segmentor(object):
     assert edgePMap.ndim <= 3 and edgePMap.ndim >=2
 
     self._regionVol = labels
-    minv = numpy.min(edgePMap)
-    maxv = numpy.max(edgePMap)
+    minv = np.min(edgePMap)
+    maxv = np.max(edgePMap)
 
-    self.edgeVol = ((edgePMap - minv) / ( maxv - minv) * 255).astype(numpy.float32) #normalize edge probability map to 0-255
+    self.edgeVol = ((edgePMap - minv) / ( maxv - minv) * 255).astype(np.float32) #normalize edge probability map to 0-255
     
     cdef Graph *g = new Graph()
     cdef ArcMapF *am = new ArcMapF(deref(g))
