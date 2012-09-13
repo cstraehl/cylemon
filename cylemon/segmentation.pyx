@@ -402,7 +402,7 @@ cdef class IndexAccessor(object):
       return self._lut
 
     def __set__(self,value):
-      self._lut[:] = value[:]
+      self._lut[:] = value
 
   def __init__(self,indexVol, lut):
     self._indexVol = indexVol
@@ -420,6 +420,10 @@ cdef class IndexAccessor(object):
     other values mean set to this value
     """
     indices = self._indexVol[key].ravel()
+    if not isinstance(value, np.ndarray):
+      a = np.ndarray(indices.shape)
+      a[:] = value
+      value = a
     values = value.ravel()
     
     indicesindices = np.where((values != 0) * (values != 255))[0]
