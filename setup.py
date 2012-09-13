@@ -1,9 +1,3 @@
-#
-#
-#
-
-
-
 import os
 from setuptools import setup, find_packages
 from distutils.core import setup
@@ -50,7 +44,7 @@ try:
                         libraries = ["stdc++", "emon", "gomp"],
                         language='C++',
                         extra_compile_args=['-O3', '-fopenmp'],
-                        include_dirs = ['/usr/local/include'])
+                        include_dirs = ['/usr/local/include', os.getenv("HOME")+"/inst/include"])
                       ]
     )
 except Exception as e:
