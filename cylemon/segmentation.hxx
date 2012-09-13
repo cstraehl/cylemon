@@ -124,7 +124,7 @@ void prioMSTmargin(const GT &graph, const NMS & seeds, const AMF & weights, NMF 
 
 
 template <typename GT, typename NMS, typename NMS2, typename AMF, typename AMB>
-void prioMST(const GT &graph, const NMS & seeds, NMS2 & segmentation, const AMF & weights, AMB & intree, const vector<float> &prio) {
+void prioMST(const GT &graph, const NMS & seeds, NMS2 & segmentation, const AMF & weights, AMB & intree, const vector<float> &prio, int noBiasBelow = 0) {
   typedef typename GT::Node Node;
   typedef typename GT::Arc Arc;
   typedef typename GT::NodeIt NodeIt;
@@ -182,7 +182,16 @@ void prioMST(const GT &graph, const NMS & seeds, NMS2 & segmentation, const AMF 
       for(OutArcIt ait(graph,target); ait != INVALID; ++ait) {
         if(!visited[graph.runningNode(ait)]) {
           int tprio;
-          tprio = (int) (weights[ait]*prio[label]);
+          if(static_cast<int>(weights[ait]) > noBiasBelow) {
+            tprio = (int) (weights[ait]*prio[label]);
+          }
+          else {
+            //FIXME: this is only OK if we use the "none" uncertainty estimator
+            tprio = (int) (weights[ait]);
+          }
+          if(tprio < 0 || tprio > 255) {
+            throw std::runtime_error("bad");
+          }
           heap.push(ait,tprio);
         }
       }
