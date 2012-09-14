@@ -449,8 +449,11 @@ cdef class Segmentor(object):
   cdef object _seeds
   cdef object _objects
   cdef object _object_names
+  cdef object _object_lut
   cdef object _object_seeds_fg
   cdef object _object_seeds_bg
+  cdef object _object_seeds_fg_voxels
+  cdef object _object_seeds_bg_voxels
   cdef int    _numNodes
   cdef object _segmentation
   cdef object _uncertainty
@@ -463,6 +466,24 @@ cdef class Segmentor(object):
       return self._object_names
     def __set__(self, value):
       self._object_names = value
+
+  property object_seeds_fg_voxels:
+    def __get__(self):
+      return self._object_seeds_fg_voxels
+    def __set__(self, value):
+      self._object_seeds_fg_voxels = value
+
+  property object_seeds_bg_voxels:
+    def __get__(self):
+      return self._object_seeds_bg_voxels
+    def __set__(self, value):
+      self._object_seeds_bg_voxels = value
+
+  property object_lut:
+    def __get__(self):
+      return self._object_lut
+    def __set__(self, value):
+      self._object_lut = value
 
   property object_seeds_fg:
     def __get__(self):
@@ -535,6 +556,9 @@ cdef class Segmentor(object):
     self.object_names = dict()
     self.object_seeds_fg = dict()
     self.object_seeds_bg = dict()      
+    self._object_seeds_fg_voxels = dict()
+    self._object_seeds_bg_voxels = dict()
+    self.object_lut = dict()
     if edgePMap is None:
       return
     assert labels.dtype == np.int32
@@ -591,9 +615,9 @@ cdef class Segmentor(object):
     self._regionCenter = calcRegionCenters(self._regionVol, self._numNodes)
     self._regionSize = calcRegionSizes(self._regionVol, self._numNodes)
   
-  def saveH5(self, filename, groupname):
+  def saveH5(self, filename, groupname, mode="w"):
     print "saving segmentor to %r[%r] ..." % (filename, groupname)
-    f = h5py.File(filename,"w")
+    f = h5py.File(filename, mode)
     try:
       f.create_group(groupname)
     except:
