@@ -454,6 +454,8 @@ cdef class Segmentor(object):
   cdef object _object_seeds_bg
   cdef object _object_seeds_fg_voxels
   cdef object _object_seeds_bg_voxels
+  cdef object _no_bias_below
+  cdef object _bg_priority
   cdef int    _numNodes
   cdef object _segmentation
   cdef object _uncertainty
@@ -466,6 +468,18 @@ cdef class Segmentor(object):
       return self._object_names
     def __set__(self, value):
       self._object_names = value
+
+  property no_bias_below:
+    def __get__(self):
+      return self._no_bias_below
+    def __set__(self, value):
+      self._no_bias_below = value
+
+  property bg_priority:
+    def __get__(self):
+      return self._bg_priority
+    def __set__(self, value):
+      self._bg_priority = value
 
   property object_seeds_fg_voxels:
     def __get__(self):
@@ -558,6 +572,8 @@ cdef class Segmentor(object):
     self.object_seeds_bg = dict()      
     self._object_seeds_fg_voxels = dict()
     self._object_seeds_bg_voxels = dict()
+    self._no_bias_below = dict()
+    self._bg_priority = dict()
     self.object_lut = dict()
     if edgePMap is None:
       return
