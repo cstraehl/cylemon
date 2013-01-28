@@ -6,6 +6,7 @@ from cython.operator cimport dereference as deref, preincrement as inc
 import cython
 import sys
 import time
+import math
 
 import numpy as np
 cimport numpy as np
@@ -107,8 +108,9 @@ cdef ArcMap[float]* arcMapByLabels(Graph *digraph,
   timeStart = time.time()
   # count the number of labels
   for x in range(sizeX):
-    sys.stdout.write("\r  counting nhood sizes: %f%%          " % (100.0*x/float(sizeX),))
-    sys.stdout.flush()
+    if x % int(math.ceil(1.0 * sizeX / 1000.0)) == 0:
+      sys.stdout.write("\r  counting nhood sizes: %f%%          " % (100.0*x/float(sizeX),))
+      sys.stdout.flush()
     for y in range(sizeY):
       for z in range(sizeZ):
         a = labelMap[x,y,z]
@@ -153,8 +155,9 @@ cdef ArcMap[float]* arcMapByLabels(Graph *digraph,
   cdef float av,bv
   # add everything to the neighborhood array
   for x in range(0,sizeX):
-    sys.stdout.write("\r  add to nhood array %f%%          " % (100.0*x/float(sizeX)))
-    sys.stdout.flush()
+    if x % int(math.ceil(1.0 * sizeX / 1000.0)) == 0:
+      sys.stdout.write("\r  add to nhood array %f%%          " % (100.0*x/float(sizeX)))
+      sys.stdout.flush()
     for y in range(0,sizeY):
       for z in range(0,sizeZ):
         a = labelMap[x,y,z]
@@ -209,7 +212,7 @@ cdef ArcMap[float]* arcMapByLabels(Graph *digraph,
   # sort the neighborhood information
   timeStart = time.time()
   for i in range(1, neighborOffset.shape[0]-1):
-    if i % 100 == 0:
+    if i % int(math.ceil(1.0 * neighborOffset.shape[0] / 1000.0)) == 0:
         sys.stdout.write("\r   %f%%         " % (100.0*i/float(neighborOffset.shape[0])))
         sys.stdout.flush()
     neighbors[neighborOffset[i]:neighborOffset[i+1]].sort(order=('b')) 
@@ -242,7 +245,7 @@ cdef ArcMap[float]* arcMapByLabels(Graph *digraph,
   cdef int ll
   ll = neighbors.shape[0]
   for i in range(neighbors.shape[0]):
-    if i % 100 == 0:
+    if i % int(math.ceil(1.0 * neighbors.shape[0] / 1000.0)) == 0:
         sys.stdout.write("\r   %f%%          " % (100.0*i/float(ll)))
         sys.stdout.flush()
     if neighbors[i].a != lastA or neighbors[i].b != lastB:
@@ -812,16 +815,18 @@ cdef class Segmentor(object):
     
     cdef int a,b
     cdef ArcIt ait = ArcIt(deref(g)) 
+    cdef double sqrt_arg
     while ait != INVALID:
       a = g.id(g.source(ait))
       b = g.id(g.target(ait))
       # calculate euclidean distance
-      deref(dm)[ait] = sqrt( (centers[a,0] - centers[b,0])**2 + (centers[a,1] - centers[b,1])**2 + (centers[a,2] - centers[b,2])**2)
+      sqrt_arg = (centers[a,0] - centers[b,0])**2 + (centers[a,1] - centers[b,1])**2 +(centers[a,2] - centers[b,2])**2
+      deref(dm)[ait] = sqrt(sqrt_arg)
       ##print "Distance between node %d and %d : %f" % (a,b, deref(dm)[ait])
       inc(ait)
     
     cdef Node n
-    cdef float distance
+    cdef float distance = 0
     maxDistanceNode(deref(g), deref(dm), deref(nm), n, distance)
 
     del dm

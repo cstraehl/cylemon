@@ -1,11 +1,8 @@
 import os
-from setuptools import setup, find_packages
 from distutils.core import setup
 from distutils.extension import Extension
 from Cython.Distutils import build_ext
 import string 
-
-import setuptools
 import distutils
 
 vers = string.split(distutils.__version__, ".")
