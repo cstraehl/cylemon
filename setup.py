@@ -22,10 +22,13 @@ def read(fname):
 
 try:
     import sys
+    from numpy.distutils.misc_util import get_numpy_include_dirs    
     if sys.platform.startswith("win"):
+        include_dirs = [get_numpy_include_dirs()[0].replace('\\', '/')]
         libaries = ["lemon"]
         compile_args = ["-O2", "-openmp", "-EHsc"]
     else:
+        include_dirs = ['/usr/local/include', get_numpy_include_dirs()[0]]
         libaries = ["stdc++", "emon", "gomp"]
         compile_args = ['-O3', '-fopenmp']
     
@@ -49,7 +52,7 @@ try:
                         libraries=libaries,
                         language='C++',
                         extra_compile_args=compile_args,
-                        include_dirs = ['/usr/local/include', os.getenv("HOME")+"/inst/include"])
+                        include_dirs=include_dirs)
                       ]
     )
 except Exception as e:
