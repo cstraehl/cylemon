@@ -21,6 +21,14 @@ def read(fname):
     return open(os.path.join(os.path.dirname(__file__), fname)).read()
 
 try:
+    import sys
+    if sys.platform.startswith("win"):
+        libaries = ["lemon"]
+        compile_args = ["-O2", "-openmp", "-EHsc"]
+    else:
+        libaries = ["stdc++", "emon", "gomp"]
+        compile_args = ['-O3', '-fopenmp']
+    
     setup(
         name = "cylemon",
         version = "0.0.1",
@@ -38,9 +46,9 @@ try:
         cmdclass = {'build_ext': build_ext},
         ext_modules = [Extension(name="cylemon.segmentation",
                         sources=["cylemon/segmentation.pyx"],
-                        libraries = ["stdc++", "emon", "gomp"],
+                        libraries=libaries,
                         language='C++',
-                        extra_compile_args=['-O3', '-fopenmp'],
+                        extra_compile_args=compile_args,
                         include_dirs = ['/usr/local/include', os.getenv("HOME")+"/inst/include"])
                       ]
     )
