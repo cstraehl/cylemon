@@ -38,10 +38,10 @@ try:
         cmdclass = {'build_ext': build_ext},
         ext_modules = [Extension(name="cylemon.segmentation",
                         sources=["cylemon/segmentation.pyx"],
-                        libraries = ["stdc++", "emon", "gomp"],
+						libraries = ["lemon"],
                         language='C++',
-                        extra_compile_args=['-O3', '-fopenmp'],
-                        include_dirs = ['/usr/local/include', os.getenv("HOME")+"/inst/include"])
+                        extra_compile_args=["-openmp", "-EHsc"],
+                        include_dirs = ["C:/Git/ilastik/include", "C:/Git/ilastik/python/lib/site-packages/numpy/core/include"])
                       ]
     )
 except Exception as e:
