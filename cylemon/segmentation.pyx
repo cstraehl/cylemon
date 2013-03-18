@@ -64,7 +64,8 @@ cdef ArcMap[float]* arcMapByLabels(Graph *digraph,
                       np.ndarray[np.int32_t, ndim=3, mode="strided"] labelMap,
                       np.ndarray[np.float32_t, ndim=3, mode="strided"] nodeMapIn,
                       float (*edgeValueCallback)(float[:]),
-                      object precomputedEdgeWeights
+                      object precomputedEdgeWeights,
+                      object progressCallback
                       ):
   """
   builds the adjacency graph structure for an 3D image.
@@ -109,8 +110,7 @@ cdef ArcMap[float]* arcMapByLabels(Graph *digraph,
   # count the number of labels
   for x in range(sizeX):
     if x % int(math.ceil(1.0 * sizeX / 1000.0)) == 0:
-      sys.stdout.write("\r  counting nhood sizes: %f%%          " % (100.0*x/float(sizeX),))
-      sys.stdout.flush()
+      progressCallback(10.0*x/float(sizeX)) # show progress 0..10
     for y in range(sizeY):
       for z in range(sizeZ):
         a = labelMap[x,y,z]
@@ -132,8 +132,8 @@ cdef ArcMap[float]* arcMapByLabels(Graph *digraph,
             neighborCount[a] += 1
             neighborCount[b] += 1
             totalNeighborhoods += 2
+  
   print "\n   counting nhood sizes: %f sec.          " % (time.time()-timeStart)
-
   cdef np.ndarray[dtype=np.int32_t,ndim=1] neighborOffset, offsetBackup
   neighborOffset = np.cumsum(neighborCount).astype(np.int32)
   print "   neighborOffset: %f MB" % (neighborOffset.nbytes / float(1024**2),) 
@@ -154,10 +154,10 @@ cdef ArcMap[float]* arcMapByLabels(Graph *digraph,
   print "   adding values to neighborhoods (count=%r) ..." % (totalNeighborhoods,)
   cdef float av,bv
   # add everything to the neighborhood array
+  
   for x in range(0,sizeX):
     if x % int(math.ceil(1.0 * sizeX / 1000.0)) == 0:
-      sys.stdout.write("\r  add to nhood array %f%%          " % (100.0*x/float(sizeX)))
-      sys.stdout.flush()
+      progressCallback(10+10.0*x/float(sizeX)) # show progress 10..20
     for y in range(0,sizeY):
       for z in range(0,sizeZ):
         a = labelMap[x,y,z]
@@ -198,8 +198,9 @@ cdef ArcMap[float]* arcMapByLabels(Graph *digraph,
             neighbors[neighborOffset[b]].a = b
             neighbors[neighborOffset[b]].b = a
             neighborOffset[b]+=1
+  
   print "\n    add to nhood array: %f sec." % (time.time()-timeStart)
-
+  
   cdef int nsize
   cdef int lastA = -1
   cdef int lastB = -1
@@ -213,9 +214,9 @@ cdef ArcMap[float]* arcMapByLabels(Graph *digraph,
   timeStart = time.time()
   for i in range(1, neighborOffset.shape[0]-1):
     if i % int(math.ceil(1.0 * neighborOffset.shape[0] / 1000.0)) == 0:
-        sys.stdout.write("\r   %f%%         " % (100.0*i/float(neighborOffset.shape[0])))
-        sys.stdout.flush()
-    neighbors[neighborOffset[i]:neighborOffset[i+1]].sort(order=('b')) 
+        progressCallback(20+40.0*i/float(neighborOffset.shape[0])) # show progress 20..60
+    neighbors[neighborOffset[i]:neighborOffset[i+1]].sort(order=('b'))
+  
   print "\n   ... took %f sec." % (time.time()-timeStart)
 
   neighbors[neighborOffset[-1]:].sort(order=('b')) 
@@ -244,10 +245,10 @@ cdef ArcMap[float]* arcMapByLabels(Graph *digraph,
   # FINALLY, construct the true graph
   cdef int ll
   ll = neighbors.shape[0]
+  
   for i in range(neighbors.shape[0]):
     if i % int(math.ceil(1.0 * neighbors.shape[0] / 1000.0)) == 0:
-        sys.stdout.write("\r   %f%%          " % (100.0*i/float(ll)))
-        sys.stdout.flush()
+        progressCallback(60+40.0*i/float(ll)) # show progress 60..100
     if neighbors[i].a != lastA or neighbors[i].b != lastB:
       coo_ind[j,0] = lastA
       coo_ind[j,1] = lastB
@@ -272,7 +273,6 @@ cdef ArcMap[float]* arcMapByLabels(Graph *digraph,
       lastB = neighbors[i].b
       lastPos = i
       j += 1
-
   coo_ind[j,0] = lastA
   coo_ind[j,1] = lastB
 
@@ -305,7 +305,7 @@ cdef ArcMap[float]* arcMapByLabels(Graph *digraph,
   print "      num Nodes", maxLabel+1
   print "      num Arcs ", coo_ind.shape[0]
   print "      took %f sec." % (time.time() - ragTimeStart)
-
+  progressCallback(100)
 
 
 
@@ -560,7 +560,8 @@ cdef class Segmentor(object):
                      edgePMap = None,
                      edgeWeightFunctor = "average",
                      rawData = None,
-                     precomputedEdgeWeights=None):
+                     precomputedEdgeWeights=None,
+                     progressCallback = lambda x:None):
 
     """
     build lemon adjacency graph
@@ -613,7 +614,7 @@ cdef class Segmentor(object):
     if labels.ndim == 2:
       labels.shape += (1,)
 
-    arcMapByLabels(g,am,self._regionVol, self.edgeVol, mycallback, precomputedEdgeWeights)
+    arcMapByLabels(g,am,self._regionVol, self.edgeVol, mycallback, precomputedEdgeWeights,progressCallback)
 
     cdef NodeIt node
     cdef OutArcIt arcit
