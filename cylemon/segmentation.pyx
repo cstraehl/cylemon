@@ -749,7 +749,10 @@ cdef class Segmentor(object):
     instance._regionVol = labels
     instance._seeds = seeds
     instance._objects = objects
-    instance._rawData = gr["raw"][:]
+    if "raw" in gr.keys():
+        instance._rawData = gr["raw"][:]
+    else:
+        instance._rawData = None
     instance._regionCenter = gr["regionCenter"][:]
     instance._regionSize = gr["regionSize"][:]
     instance._segmentation = np.zeros((numNodes,),np.int32)
