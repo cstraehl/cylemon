@@ -49,12 +49,8 @@ try:
         cmdclass = {'build_ext': build_ext},
         ext_modules = [Extension(name="cylemon.segmentation",
                         sources=["cylemon/segmentation.pyx"],
-						libraries = ["lemon"],
                         language='C++',
-                        extra_compile_args=["-openmp", "-EHsc"],
-                        include_dirs = ["C:/Git/ilastik/include", "C:/Git/ilastik/python/lib/site-packages/numpy/core/include"])
                         libraries=libaries,
-                        language='C++',
                         extra_compile_args=compile_args,
                         include_dirs=include_dirs)
                       ]
