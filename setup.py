@@ -29,17 +29,31 @@ try:
         i = sys.argv.index('--no-extra-includes')
         sys.argv.pop(i)
         provide_extra_includes = False
+
+    has_openmp = True
+    if '--no-openmp' in sys.argv:
+        i = sys.argv.index('--no-openmp')
+        sys.argv.pop(i)
+        has_openmp = False
     
     if sys.platform.startswith("win"):
         for i,d in (include_dirs):
             include_dirs[i] = d.replace('\\', '/')
         libaries = ["lemon"]
-        compile_args = ["-O2", "-openmp", "-EHsc"]
+        compile_args = ["-O2", "-EHsc"]
+        if has_openmp:
+            compile_args.append( "-openmp" )
+        else:
+            compile_args+= ["-D", "CYLEMON_NO_OPENMP"]             
     else:
         if provide_extra_includes:
             include_dirs.append( '/usr/local/include' )
         libaries = ["stdc++", "emon", "gomp"]
-        compile_args = ['-O3', '-fopenmp']
+        compile_args = ['-O3']
+        if has_openmp:
+            compile_args.append( "-fopenmp" )
+        else:
+            compile_args+= ["-D", "CYLEMON_NO_OPENMP"]
     
     setup(
         name = "cylemon",
