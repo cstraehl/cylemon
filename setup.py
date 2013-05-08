@@ -15,20 +15,29 @@ assert int(vers[0]) >= 2 and int(vers[1]) >= 7 and int(vers[2]) >= 3, """
                     sudo easy_install -U distribute\n
                    """ 
 
-
-
 def read(fname):
     return open(os.path.join(os.path.dirname(__file__), fname)).read()
 
 try:
     import sys
     from numpy.distutils.misc_util import get_numpy_include_dirs    
+
+    # Check custom args
+    include_dirs = [get_numpy_include_dirs()[0]]
+    provide_extra_includes = True
+    if '--no-extra-includes' in sys.argv:
+        i = sys.argv.index('--no-extra-includes')
+        sys.argv.pop(i)
+        provide_extra_includes = False
+    
     if sys.platform.startswith("win"):
-        include_dirs = [get_numpy_include_dirs()[0].replace('\\', '/')]
+        for i,d in (include_dirs):
+            include_dirs[i] = d.replace('\\', '/')
         libaries = ["lemon"]
         compile_args = ["-O2", "-openmp", "-EHsc"]
     else:
-        include_dirs = ['/usr/local/include', get_numpy_include_dirs()[0]]
+        if provide_extra_includes:
+            include_dirs.append( '/usr/local/include' )
         libaries = ["stdc++", "emon", "gomp"]
         compile_args = ['-O3', '-fopenmp']
     
