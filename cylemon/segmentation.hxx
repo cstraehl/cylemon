@@ -7,7 +7,11 @@
 #include <cstdlib>
 #include <stdexcept>
 
-#include <omp.h>
+#ifndef CYLEMON_NO_OPENMP
+  #include <omp.h>
+#else
+  #pragma message "Performance Warning: OpemMP support disabled.  prioMSTperturb() will not be run in parallel."
+#endif
 
 using namespace lemon;
 using namespace std;
