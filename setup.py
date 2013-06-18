@@ -35,9 +35,9 @@ try:
         i = sys.argv.index('--no-openmp')
         sys.argv.pop(i)
         has_openmp = False
-    
+
     if sys.platform.startswith("win"):
-        for i,d in (include_dirs):
+        for i,d in enumerate(include_dirs):
             include_dirs[i] = d.replace('\\', '/')
         libaries = ["lemon"]
         compile_args = ["-O2", "-EHsc"]
@@ -54,7 +54,7 @@ try:
             compile_args.append( "-fopenmp" )
         else:
             compile_args+= ["-D", "CYLEMON_NO_OPENMP"]
-    
+
     setup(
         name = "cylemon",
         version = "0.0.1",
